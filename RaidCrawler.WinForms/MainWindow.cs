@@ -62,6 +62,11 @@ public partial class MainWindow : Form
     private bool StopAdvances =>
         !Config.EnableFilters || RaidFilters.Count == 0 || RaidFilters.All(x => !x.Enabled);
 
+    private readonly Version CurrentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!;
+
+    /// <summary>
+    /// Initializes the main application window, loads configuration and location resources, sets up connection defaults and services, configures sprite rendering, and initializes UI state and controls.
+    /// </summary>
     public MainWindow()
     {
         Config = new ClientConfig();
@@ -71,7 +76,7 @@ public partial class MainWindow : Form
 #else
         var build = "";
 #endif
-        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!;
+        var v = CurrentVersion;
         var filterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "filters.json");
         if (File.Exists(filterPath))
             RaidFilters = JsonSerializer.Deserialize<List<RaidFilter>>(File.ReadAllText(filterPath)) ?? [];
@@ -187,6 +192,11 @@ public partial class MainWindow : Form
 
     public int GetStatDaySkipSuccess() => StatDaySkipSuccess;
 
+    /// <summary>
+    /// Initializes UI elements and starts the background update check when the main window loads.
+    /// </summary>
+    /// <param name="sender">The event sender.</param>
+    /// <param name="e">Event arguments.</param>
     private void MainWindow_Load(object sender, EventArgs e)
     {
         CenterToScreen();
@@ -195,8 +205,14 @@ public partial class MainWindow : Form
         DefaultColor = IVs.BackColor;
         RaidBoost.SelectedIndex = 0;
         ToggleStreamerView();
+        CheckForUpdates();
     }
 
+    /// <summary>
+    /// Update stored IP address when the IP input textbox value changes.
+    /// </summary>
+    /// <param name="sender">The TextBox that raised the event; its Text value is applied to Config.IP and ConnectionConfig.IP.</param>
+    /// <param name="e">Event arguments (unused).</param>
     private void InputSwitchIP_Changed(object sender, EventArgs e)
     {
         TextBox textBox = (TextBox)sender;
@@ -903,6 +919,15 @@ public partial class MainWindow : Form
         );
     }
 
+    /// <summary>
+    /// Update the form's controls to display details for the currently selected raid.
+    /// </summary>
+    /// <remarks>
+    /// Populates seed/EC/PID, area and den, event indicator, tera type and gem, difficulty stars,
+    /// species and form, sprite image with tera color, gender, nature, ability, moves (or extra moves),
+    /// IVs and related tooltips, and highlights PID/IV fields for shiny/perfect IVs. If the selected
+    /// index is invalid, schedules an informational message box to notify the user about possible RAM shifts.
+    /// </remarks>
     private void DisplayRaid()
     {
         int index = ComboIndex.SelectedIndex;
@@ -933,9 +958,10 @@ public partial class MainWindow : Form
             var param = encounter.GetParam();
             var blank = new PK9 { Species = encounter.Species, Form = encounter.Form };
 
-            Encounter9RNG.GenerateData(blank, param, EncounterCriteria.Unrestricted, raid.Seed);
+            raid.GenerateDataPK9(blank, param, encounter.Shiny, raid.Seed);
+
             var img = blank.Sprite();
-            img = ApplyTeraColor((byte)teraType, img, SpriteBackgroundType.BottomStripe);
+            img = (Bitmap)ApplyTeraColor((byte)teraType, img, SpriteBackgroundType.BottomStripe);
 
             var form = ShowdownParsing.GetStringFromForm(
                 encounter.Form,
@@ -952,7 +978,7 @@ public partial class MainWindow : Form
             Gender.Text = $"{(Gender)blank.Gender}";
 
             var nature = blank.Nature;
-            Nature.Text = $"{RaidContainer.Strings.Natures[nature]}";
+            Nature.Text = $"{RaidContainer.Strings.Natures[(int)nature]}";
             Ability.Text = $"{RaidContainer.Strings.Ability[blank.Ability]}";
 
             var extraMoves = new ushort[] { 0, 0, 0, 0 };
@@ -975,8 +1001,10 @@ public partial class MainWindow : Form
                 ? RaidContainer.Strings.Move[extraMoves[3]]
                 : RaidContainer.Strings.Move[encounter.Move4];
 
-            IVs.Text = IVsString(Utils.ToSpeedLast(blank.IVs));
-            toolTip.SetToolTip(IVs, IVsString(Utils.ToSpeedLast(blank.IVs), true));
+            Span<int> _ivs = stackalloc int[6];
+            blank.GetIVs(_ivs);
+            IVs.Text = IVsString(Utils.ToSpeedLast(_ivs));
+            toolTip.SetToolTip(IVs, IVsString(Utils.ToSpeedLast(_ivs), true));
 
             PID.BackColor = raid.CheckIsShiny(encounter) ? Color.Gold : DefaultColor;
             IVs.BackColor = IVs.Text is "31/31/31/31/31/31" ? Color.YellowGreen : DefaultColor;
@@ -1044,6 +1072,14 @@ public partial class MainWindow : Form
         return baseImg;
     }
 
+    /// <summary>
+    /// Update the streamer view (teraRaidView) to show detailed information for the currently selected raid.
+    /// </summary>
+    /// <remarks>
+    /// Populates area/den, tera type gem image, difficulty (stars), sprite, species/form, gender, nature, ability,
+    /// up to eight moves (including extra moves), IVs with color-coded highlights, map image, reward counts, and shiny indicator.
+    /// If the streamer view is not initialized or the selected raid index is invalid, a user-facing message box is shown and the method returns without updating the view.
+    /// </remarks>
     private void DisplayPrettyRaid()
     {
         if (teraRaidView is null)
@@ -1086,7 +1122,8 @@ public partial class MainWindow : Form
             var param = encounter.GetParam();
             var blank = new PK9 { Species = encounter.Species, Form = encounter.Form };
 
-            Encounter9RNG.GenerateData(blank, param, EncounterCriteria.Unrestricted, raid.Seed);
+            raid.GenerateDataPK9(blank, param, encounter.Shiny, raid.Seed);
+
             var img = blank.Sprite();
 
             teraRaidView.picBoxPokemon.Image = img;
@@ -1097,7 +1134,7 @@ public partial class MainWindow : Form
             teraRaidView.Gender.Text = $"{(Gender)blank.Gender}";
 
             var nature = blank.Nature;
-            teraRaidView.Nature.Text = $"{RaidContainer.Strings.Natures[nature]}";
+            teraRaidView.Nature.Text = $"{RaidContainer.Strings.Natures[(int)nature]}";
             teraRaidView.Ability.Text = $"{RaidContainer.Strings.Ability[blank.Ability]}";
 
             teraRaidView.Move1.Text =
@@ -1123,7 +1160,9 @@ public partial class MainWindow : Form
             teraRaidView.Move8.Text =
                 extraMoves[3] > 0 ? RaidContainer.Strings.Move[extraMoves[3]] : "---";
 
-            var ivs = Utils.ToSpeedLast(blank.IVs);
+            Span<int> _ivs = stackalloc int[6];
+            blank.GetIVs(_ivs);
+            var ivs = Utils.ToSpeedLast(_ivs);
 
             // HP
             teraRaidView.HP.Text = $"{ivs[0]:D2}";
@@ -1802,6 +1841,12 @@ public partial class MainWindow : Form
         return spriteName.Replace('_', '-').Insert(0, "_");
     }
 
+    /// <summary>
+    /// Reads the console's current in-game time and opens the TickModifier dialog to allow adjusting it.
+    /// </summary>
+    /// <remarks>
+    /// If reading the time fails, an error message is shown to the user.
+    /// </remarks>
     private void B_DateTools_Click(object sender, EventArgs e)
     {
         Task.Run(async () =>
@@ -1817,5 +1862,53 @@ public partial class MainWindow : Form
                 await this.DisplayMessageBox(Webhook, $"Could not read the date: {ex.Message}", Source.Token).ConfigureAwait(false);
             }
         });
+    }
+
+
+    /// <summary>
+    /// Starts a background check for a newer application version and notifies the UI if an update is available.
+    /// </summary>
+    /// <remarks>
+    /// Performs the version check asynchronously and posts a notification on the UI thread when a newer version is found.
+    /// </remarks>
+    private void CheckForUpdates()
+    {
+        Task.Run(async () =>
+        {
+            Version? latestVersion;
+            try { latestVersion = Utils.GetLatestVersion(); }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception while checking for latest version: {ex}");
+                return;
+            }
+
+            if (latestVersion is null || latestVersion <= CurrentVersion)
+                return;
+
+            while (!IsHandleCreated) // Wait for form to be ready
+                await Task.Delay(2_000).ConfigureAwait(false);
+            await InvokeAsync(() => NotifyNewVersionAvailable(latestVersion));
+        });
+    }
+
+    /// <summary>
+    /// Notify the user that a newer application version is available and offer to open the releases page.
+    /// </summary>
+    /// <param name="version">The newer version that was detected and should be presented to the user.</param>
+    private void NotifyNewVersionAvailable(Version version)
+    {
+        Text += $" - Update v{version.Major}.{version.Minor}.{version.Build} available!";
+        UpdateStatus($"Update v{version.Major}.{version.Minor}.{version.Build} available!");
+#if !DEBUG
+        using UpdateNotifPopup nup = new(CurrentVersion, version);
+        if (nup.ShowDialog() == DialogResult.OK)
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/LegoFigure11/RaidCrawler/releases/")
+            {
+                UseShellExecute = true
+            });
+        }
+#endif
     }
 }

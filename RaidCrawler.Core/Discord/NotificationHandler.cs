@@ -74,24 +74,38 @@ public class NotificationHandler(IWebhookConfig config)
             await _client.PostAsync(url.Trim(), content, token).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Builds a Discord webhook payload object describing a raid encounter for posting to webhooks.
+    /// </summary>
+    /// <param name="encounter">The raid encounter data (species, form, moves, IVs, etc.).</param>
+    /// <param name="raid">Raid metadata (seed, area, den, event flag, tera type, shiny check helper).</param>
+    /// <param name="filter">The raid filter that matched this encounter (used for filter name in the payload).</param>
+    /// <param name="time">Human-readable search time or timestamp to include in the payload.</param>
+    /// <param name="rewardsList">A list of reward tuples (itemId, quantity, ???) returned by the raid; used to format the Rewards field.</param>
+    /// <param name="hexColor">Hex color string used to set the embed color (without the leading '#').</param>
+    /// <param name="spriteName">Identifier used to construct the sprite thumbnail URL for the embed.</param>
+    /// <returns>An anonymous object representing the Discord webhook payload (username, avatar_url, content, and embeds).</returns>
     private object GenerateWebhook(ITeraRaid encounter, Raid raid, RaidFilter filter, string time, IReadOnlyList<(int, int, int)> rewardsList, string hexColor, string spriteName)
     {
-        var strings = GameInfo.GetStrings(1);
+        var strings = GameInfo.GetStrings("en");
         var param = encounter.GetParam();
         var blank = new PK9 { Species = encounter.Species, Form = encounter.Form };
 
-        Encounter9RNG.GenerateData(blank, param, EncounterCriteria.Unrestricted, raid.Seed);
+        raid.GenerateDataPK9(blank, param, encounter.Shiny, raid.Seed);
+
         var form = Utils.GetFormString(blank.Species, blank.Form, strings);
         var species = $"{strings.Species[encounter.Species]}{form}";
         var difficulty = Difficulty(encounter.Stars, raid.IsEvent);
-        var nature = $"{strings.Natures[blank.Nature]}";
+        var nature = $"{strings.Natures[(int)blank.Nature]}";
         var ability = $"{strings.Ability[blank.Ability]}";
         var shiny = Shiny(raid.CheckIsShiny(encounter), ShinyExtensions.IsSquareShinyExist(blank));
         var gender = GenderEmoji(blank.Gender);
         var teratype = raid.GetTeraType(encounter);
         var tera = $"{strings.types[teratype]}";
         var teraemoji = TeraEmoji(strings.types[teratype]);
-        var ivs = IVsStringEmoji(ToSpeedLast(blank.IVs));
+        Span<int> _ivs = stackalloc int[6];
+        blank.GetIVs(_ivs);
+        var ivs = IVsStringEmoji(ToSpeedLast(_ivs));
         ushort[] moves =
         [
             encounter.Move1,

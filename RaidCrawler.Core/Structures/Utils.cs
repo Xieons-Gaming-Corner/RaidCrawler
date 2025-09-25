@@ -1,4 +1,5 @@
 using PKHeX.Core;
+using System.Numerics;
 using System.Reflection;
 
 namespace RaidCrawler.Core.Structures;
@@ -51,6 +52,11 @@ public static class Utils
         return buffer;
     }
 
+    /// <summary>
+    /// Retrieves the embedded manifest resource identified by the provided name and returns its contents as a string.
+    /// </summary>
+    /// <param name="name">Case-insensitive resource lookup key (the file-like key derived from manifest resource names).</param>
+    /// <returns>The resource text if found; otherwise, <c>null</c>.</returns>
     public static string? GetStringResource(string name)
     {
         if (!resourceNameMap.TryGetValue(name.ToLowerInvariant(), out var resourceName))
@@ -64,6 +70,42 @@ public static class Utils
         return reader.ReadToEnd();
     }
 
+    /// <summary>
+    /// Retrieves the latest release tag for the RaidCrawler repository on GitHub and returns it as a Version if parseable.
+    /// </summary>
+    /// <returns>`Version` representing the latest release tag (after removing a leading 'v' and any prerelease suffix), or `null` if the tag cannot be found or parsed.</returns>
+    public static Version? GetLatestVersion()
+    {
+        const string endpoint = "https://api.github.com/repos/LegoFigure11/RaidCrawler/releases/latest";
+        var response = NetUtil.GetStringFromURL(new Uri(endpoint));
+        if (response is null) return null;
+
+        const string tag = "tag_name";
+        var index = response.IndexOf(tag, StringComparison.Ordinal);
+        if (index == -1) return null;
+
+        var first = response.IndexOf('"', index + tag.Length + 1) + 1;
+        if (first == 0) return null;
+
+        var second = response.IndexOf('"', first);
+        if (second == -1) return null;
+
+        var tagString = response.AsSpan()[first..second].TrimStart('v');
+
+        var patchIndex = tagString.IndexOf('-');
+        if (patchIndex != -1) tagString = tagString.ToString().Remove(patchIndex).AsSpan();
+
+        return !Version.TryParse(tagString, out var latestVersion) ? null : latestVersion;
+    }
+
+    /// <summary>
+    /// Get the form suffix for a given species and form in the specified game context.
+    /// </summary>
+    /// <param name="species">Numeric identifier of the species.</param>
+    /// <param name="form">Index of the form for the species.</param>
+    /// <param name="formStrings">Collection of form name strings used for lookup.</param>
+    /// <param name="context">Game generation/context to use when resolving the form name.</param>
+    /// <returns>The form string prefixed with '-' if it is non-empty and does not already start with '-', otherwise the original form string (empty if no form name exists).</returns>
     public static string GetFormString(ushort species, byte form, GameStrings formStrings, EntityContext context = EntityContext.Gen9)
     {
         var result = ShowdownParsing.GetStringFromForm(form, formStrings, species, context);

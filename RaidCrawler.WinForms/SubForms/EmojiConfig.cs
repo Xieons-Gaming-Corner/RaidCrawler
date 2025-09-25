@@ -23,10 +23,16 @@ public partial class EmojiConfig : Form
         return dt;
     }
 
+    /// <summary>
+    /// Replaces the form's ClientConfig emoji mapping with a dictionary built from the current rows of EmojiGrid.
+    /// </summary>
+    /// <remarks>
+    /// Each row of the grid's DataTable is read with the first column as the emoji key and the second column as its value; the resulting dictionary is assigned to <c>c.Emoji</c>.
+    /// </remarks>
     private void EmojiGrid_Changed(object sender, EventArgs e)
     {
         var dict = new Dictionary<string, string>();
-        var dt = (DataTable)EmojiGrid.DataSource;
+        var dt = (DataTable)EmojiGrid.DataSource!;
         dt.AsEnumerable().ToList().ForEach(row => dict.Add((string)row[0], (string)row[1]));
         c.Emoji = dict;
     }

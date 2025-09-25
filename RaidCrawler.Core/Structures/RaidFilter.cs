@@ -1,4 +1,5 @@
 using PKHeX.Core;
+using System.Diagnostics.Metrics;
 
 namespace RaidCrawler.Core.Structures;
 
@@ -127,12 +128,19 @@ public class RaidFilter
         return nature == Nature;
     }
 
+    /// <summary>
+    /// Determines whether the provided PK9's individual values satisfy the filter's IV criteria.
+    /// </summary>
+    /// <param name="blank">A PK9 whose IVs will be evaluated against the filter settings.</param>
+    /// <returns>`true` if every IV selected by `IVBin` meets its configured threshold and comparison in `IVVals`/`IVComps`, `false` otherwise.</returns>
     public bool IsIVsSatisfied(PK9 blank)
     {
         if (IVBin == 0)
             return true;
 
-        var ivs = Utils.ToSpeedLast(blank.IVs);
+        Span<int> _ivs = stackalloc int[6];
+        blank.GetIVs(_ivs);
+        var ivs = Utils.ToSpeedLast(_ivs);
         for (int i = 0; i < 6; i++)
         {
             var iv = IVVals >> i * 5 & 31;
@@ -177,6 +185,14 @@ public class RaidFilter
         return BatchEditing.IsFilterMatch(filters, blank);
     }
 
+    /// <summary>
+    /// Determines whether the specified encounter and raid satisfy all enabled filter criteria.
+    /// </summary>
+    /// <param name="container">Container providing context for reward calculation.</param>
+    /// <param name="enc">Encounter metadata used to generate the PK9 and evaluate encounter-specific filters.</param>
+    /// <param name="raid">Raid context (seed and generation methods) used to populate the PK9.</param>
+    /// <param name="SandwichBoost">Additional reward boost applied when evaluating reward-based filters.</param>
+    /// <returns>`true` if all enabled filter criteria are satisfied for the generated PK9 and encounter; `false` otherwise.</returns>
     public bool FilterSatisfied(
         RaidContainer container,
         ITeraRaid enc,
@@ -186,7 +202,8 @@ public class RaidFilter
     {
         var param = enc.GetParam();
         var blank = new PK9 { Species = enc.Species, Form = enc.Form };
-        Encounter9RNG.GenerateData(blank, param, EncounterCriteria.Unrestricted, raid.Seed);
+
+        raid.GenerateDataPK9(blank, param, enc.Shiny, raid.Seed);
 
         return Enabled
                && IsIVsSatisfied(blank)
@@ -195,7 +212,7 @@ public class RaidFilter
                && IsRareECSatisfied(blank)
                && IsSpeciesSatisfied(blank.Species)
                && IsFormSatisfied(blank.Form)
-               && IsNatureSatisfied(blank.Nature)
+               && IsNatureSatisfied((int)blank.Nature)
                && IsStarsSatisfied(enc)
                && IsTeraTypeSatisfied(raid, enc)
                && IsRewardsSatisfied(container, enc, raid, SandwichBoost)

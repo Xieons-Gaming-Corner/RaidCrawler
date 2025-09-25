@@ -55,10 +55,19 @@ public record RaidContainer
         "su2_raid_enemy_06_array.bin",
     ];
 
+    /// <summary>
+    /// Initializes a RaidContainer for the specified game, populating encounter lists and base reward tables.
+    /// </summary>
+    /// <param name="game">The game identifier to assign to the container (for example, "Scarlet").</param>
+    /// <remarks>
+    /// - Language strings are loaded explicitly in English.
+    /// - GemTeraRaidsBase/Kitakami/Blueberry are populated from bundled raid data arrays mapped to their respective map parents.
+    /// - BaseFixedRewards and BaseLotteryRewards are deserialized from embedded JSON resources and default to empty lists if the resources are absent.
+    /// </remarks>
     public RaidContainer(string game)
     {
         Game = game;
-        Strings = GameInfo.GetStrings(1);
+        Strings = GameInfo.GetStrings("en");
         GemTeraRaidsBase = TeraEncounter.GetAllEncounters(RaidDataBase, TeraRaidMapParent.Paldea);
         GemTeraRaidsKitakami = TeraEncounter.GetAllEncounters(RaidDataKitakami, TeraRaidMapParent.Kitakami);
         GemTeraRaidsBlueberry = TeraEncounter.GetAllEncounters(RaidDataBlueberry, TeraRaidMapParent.Blueberry);

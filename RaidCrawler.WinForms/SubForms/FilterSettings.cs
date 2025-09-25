@@ -9,17 +9,19 @@ public partial class FilterSettings : Form
     private readonly List<RaidFilter> filters;
     private readonly BindingSource bs = [];
 
+    /// <summary>
+    /// Initializes the FilterSettings form, populates dropdowns with enum values, sets initial control states, and associates the form with the provided filter list.
+    /// </summary>
+    /// <param name="filters">Reference to the list of <see cref="RaidFilter"/> objects that the form will display and update; changes in the form persist to this list.</param>
     public FilterSettings(ref List<RaidFilter> filters)
     {
         InitializeComponent();
         this.filters = filters;
-        Species.DataSource = Enum.GetValues(typeof(Species))
-            .Cast<Species>()
+        Species.DataSource = Enum.GetValues<Species>()
             .Where(z => z != PKHeX.Core.Species.MAX_COUNT)
             .ToArray();
-        Nature.DataSource = Enum.GetValues(typeof(Nature));
-        TeraType.DataSource = Enum.GetValues(typeof(MoveType))
-            .Cast<MoveType>()
+        Nature.DataSource = Enum.GetValues<Nature>();
+        TeraType.DataSource = Enum.GetValues<MoveType>()
             .Where(z => z != MoveType.Any)
             .ToArray();
 

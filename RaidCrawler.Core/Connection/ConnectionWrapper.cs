@@ -248,7 +248,13 @@ public class ConnectionWrapperAsync(SwitchConnectionConfig Config, Action<string
         await Connection.SendAsync(command, token).ConfigureAwait(false);
     }
 
-    // Thank you to Anubis for sharing a more optimized routine, as well as CloseGame(), StartGame(), and SaveGame()!
+    /// <summary>
+    /// Advance the in-game/system date using an automated sequence of controller inputs based on the supplied configuration.
+    /// </summary>
+    /// <param name="config">Configuration that controls the navigation, timing, and method used to change the date (tricks, delays, overshoot, stick vs. touch, etc.).</param>
+    /// <param name="skips">Number of date-advance iterations to perform.</param>
+    /// <param name="token">Cancellation token to abort the operation.</param>
+    /// <param name="action">Optional callback invoked to report progress; receives an integer progress step value.</param>
     public async Task AdvanceDate(
         IDateAdvanceConfig config,
         int skips,
@@ -309,7 +315,7 @@ public class ConnectionWrapperAsync(SwitchConnectionConfig Config, Action<string
             // Navigate to Settings
             if (config.UseTouch)
             {
-                await Touch(0_840, 0_540, 0_050, 0, token).ConfigureAwait(false);
+                await Touch(0_909, 0_540, 0_050, 0, token).ConfigureAwait(false);
                 UpdateProgressBar(action, steps);
             }
             else
@@ -318,7 +324,7 @@ public class ConnectionWrapperAsync(SwitchConnectionConfig Config, Action<string
                     .ConfigureAwait(false);
                 UpdateProgressBar(action, steps);
 
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < 7; i++)
                 {
                     await Click(DRIGHT, config.NavigateToSettingsDelay + BaseDelay, token)
                         .ConfigureAwait(false);
