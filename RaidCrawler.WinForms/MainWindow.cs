@@ -17,13 +17,13 @@ public partial class MainWindow : Form
     private static CancellationTokenSource Source = new();
     private static CancellationTokenSource DateAdvanceSource = new();
 
-    private static readonly object _connectLock = new();
-    private static readonly object _readLock = new();
+    private static readonly Lock _connectLock = new();
+    private static readonly Lock _readLock = new();
 
     private readonly ClientConfig Config;
     private ConnectionWrapperAsync ConnectionWrapper = default!;
 
-    private readonly SwitchConnectionConfig ConnectionConfig;
+    private SwitchConnectionConfig ConnectionConfig;
 
     private readonly RaidContainer RaidContainer;
     private readonly NotificationHandler Webhook;
@@ -204,7 +204,6 @@ public partial class MainWindow : Form
     {
         TextBox textBox = (TextBox)sender;
         Config.IP = textBox.Text;
-        ConnectionConfig.IP = textBox.Text;
     }
 
     private void USB_Port_Changed(object sender, EventArgs e)
@@ -216,7 +215,6 @@ public partial class MainWindow : Form
         if (int.TryParse(textBox.Text, out int port) && port >= 0)
         {
             Config.UsbPort = port;
-            ConnectionConfig.Port = port;
             return;
         }
 
@@ -230,6 +228,12 @@ public partial class MainWindow : Form
             if (ConnectionWrapper is { Connected: true })
                 return;
 
+            ConnectionConfig = new()
+            {
+                IP = Config.IP,
+                Protocol = Config.Protocol,
+                Port = Config.Protocol is SwitchProtocol.WiFi ? 6000 : Config.UsbPort,
+            };
             ConnectionWrapper = new(ConnectionConfig, UpdateStatus);
             Connect(Source.Token);
         }
@@ -939,7 +943,7 @@ public partial class MainWindow : Form
             raid.GenerateDataPK9(blank, param, encounter.Shiny, raid.Seed);
 
             var img = blank.Sprite();
-            img = (Bitmap)ApplyTeraColor((byte)teraType, img, SpriteBackgroundType.BottomStripe);
+            ApplyTeraColor((byte)teraType, img, SpriteBackgroundType.BottomStripe);
 
             var form = ShowdownParsing.GetStringFromForm(
                 encounter.Form,
@@ -993,12 +997,12 @@ public partial class MainWindow : Form
         Task.Run(async () => await this.DisplayMessageBox(Webhook, msg, Source.Token).ConfigureAwait(false), Source.Token);
     }
 
-    private static Image? GetDisplayGemImage(int teratype, Raid raid)
+    private static Bitmap? GetDisplayGemImage(int teratype, Raid raid)
     {
         var shouldDisplayBlack = raid.IsBlack || raid.Flags == 3;
         var baseImg = shouldDisplayBlack
-            ? (Image?)Properties.Resources.ResourceManager.GetObject($"black_{teratype:D2}")
-            : (Image?)Properties.Resources.ResourceManager.GetObject($"gem_{teratype:D2}");
+            ? (Bitmap?)Properties.Resources.ResourceManager.GetObject($"black_{teratype:D2}")
+            : (Bitmap?)Properties.Resources.ResourceManager.GetObject($"gem_{teratype:D2}");
         if (baseImg is null)
             return null;
 
@@ -1008,7 +1012,7 @@ public partial class MainWindow : Form
             baseImg.PixelFormat
         );
         baseImg = ImageUtil.LayerImage(backlayer, baseImg, 5, 5);
-        var pixels = ImageUtil.GetPixelData((Bitmap)baseImg);
+        var pixels = baseImg.GetBitmapData();
         for (int i = 0; i < pixels.Length; i += 4)
         {
             if (pixels[i + 3] == 0)
@@ -1329,16 +1333,16 @@ public partial class MainWindow : Form
         return s;
     }
 
-    private static Image ApplyTeraColor(byte elementalType, Image img, SpriteBackgroundType type)
+    private static void ApplyTeraColor(byte elementalType, Bitmap img, SpriteBackgroundType type)
     {
         var color = TypeColor.GetTypeSpriteColor(elementalType);
         var thk = SpriteBuilder.ShowTeraThicknessStripe;
         var op = SpriteBuilder.ShowTeraOpacityStripe;
         var bg = SpriteBuilder.ShowTeraOpacityBackground;
-        return ApplyColor(img, type, color, thk, op, bg);
+        ApplyColor(img, type, color, thk, op, bg);
     }
 
-    private static Image ApplyColor(Image img, SpriteBackgroundType type, Color color, int thick, byte opacStripe, byte opacBack)
+    private static void ApplyColor(Bitmap img, SpriteBackgroundType type, Color color, int thick, byte opacStripe, byte opacBack)
     {
         if (type == SpriteBackgroundType.BottomStripe)
         {
@@ -1346,7 +1350,7 @@ public partial class MainWindow : Form
             if ((uint)stripeHeight > img.Height) // clamp negative & too-high values back to height.
                 stripeHeight = img.Height;
 
-            return ImageUtil.BlendTransparentTo(img, color, opacStripe, img.Width * 4 * (img.Height - stripeHeight));
+            img.BlendTransparentTo(color, opacStripe, img.Width * 4 * (img.Height - stripeHeight));
         }
         if (type == SpriteBackgroundType.TopStripe)
         {
@@ -1354,11 +1358,10 @@ public partial class MainWindow : Form
             if ((uint)stripeHeight > img.Height) // clamp negative & too-high values back to height.
                 stripeHeight = img.Height;
 
-            return ImageUtil.BlendTransparentTo(img, color, opacStripe, 0, (img.Width * 4 * stripeHeight) - 4);
+            img.BlendTransparentTo(color, opacStripe, 0, img.Width * 4 * stripeHeight);
         }
         if (type == SpriteBackgroundType.FullBackground) // full background
-            return ImageUtil.BlendTransparentTo(img, color, opacBack);
-        return img;
+            img.ChangeTransparentTo(color, opacBack);
     }
 
     private static Bitmap? GenerateMap(Raid raid, int teratype)
@@ -1392,7 +1395,7 @@ public partial class MainWindow : Form
         try
         {
             (double x, double z) = GetCoordinate(raid, locData, gem);
-            return ImageUtil.LayerImage(map, gem, (int)x, (int)z);
+            return ImageUtil.LayerImage((Bitmap)map, gem, (int)x, (int)z);
         }
         catch
         {
@@ -1610,7 +1613,6 @@ public partial class MainWindow : Form
             LabelSwitchIP.Visible = false;
             USB_Port_label.Visible = true;
             USB_Port_TB.Visible = true;
-            ConnectionConfig.Port = Config.UsbPort;
         }
         else
         {
@@ -1618,7 +1620,6 @@ public partial class MainWindow : Form
             LabelSwitchIP.Visible = true;
             USB_Port_label.Visible = false;
             USB_Port_TB.Visible = false;
-            ConnectionConfig.Port = 6000;
         }
     }
 
@@ -1784,7 +1785,7 @@ public partial class MainWindow : Form
             Form = encounters[i].Form,
             Gender = encounters[i].Gender,
         };
-        blank.SetSuggestedFormArgument();
+        blank.SetSuggestedFormArgument(blank.Species, blank.Form, blank.Context, new LegalityAnalysis(blank).Info.EvoChainsAllGens);
 
         var spriteName = GetSpriteNameForUrl(blank, raids[i].CheckIsShiny(encounters[i]));
         await Webhook.SendNotification(encounters[i], raids[i], filter, time, rewards[i], hexColor, spriteName, token).ConfigureAwait(false);
